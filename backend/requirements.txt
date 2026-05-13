@@ -10,3 +10,4 @@ pytest
 httpx
 pytest-asyncio
 anyio
+ollama

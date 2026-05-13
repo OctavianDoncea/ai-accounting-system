@@ -8,3 +8,5 @@ python-dotenv
 pydantic
 pytest
 httpx
+pytest-asyncio
+anyio

@@ -3,11 +3,17 @@ from sqlalchemy.orm import relationship
 from app.database import Base
 import datetime
 
+
+def utc_now_naive() -> datetime.datetime:
+    """Store UTC wall time in TIMESTAMP WITHOUT TIME ZONE (asyncpg rejects tz-aware values there)."""
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+
 class Session(Base):
     __tablename__ = 'sessions'
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    created_at = Column(DateTime, default=utc_now_naive)
     base_currency = Column(String(3), default='USD')
 
     chart_of_accounts = relationship('ChartOfAccount', back_populates='session')
@@ -64,7 +70,7 @@ class BankStatementImport(Base):
     id = Column(Integer, primary_key=True, index=True)
     session_id = Column(Integer, ForeignKey('sessions.id'), nullable=False)
     file_name = Column(String(255))
-    processed_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    processed_at = Column(DateTime, default=utc_now_naive)
 
     session = relationship('Session', back_populates='bank_statement_imports')
 
@@ -76,7 +82,7 @@ class JournalEntry(Base):
     credit_account_id = Column(Integer, ForeignKey('chart_of_accounts.id'))
     debit_amount = Column(Float, default=0)
     credit_amount = Column(Float, default=0)
-    entry_date = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    entry_date = Column(DateTime, default=utc_now_naive)
 
     transaction = relationship('Transaction', back_populates='journal_entries')
     debit_account = relationship('ChartOfAccount', foreign_keys=[debit_account_id])

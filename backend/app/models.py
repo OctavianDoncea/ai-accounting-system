@@ -69,7 +69,7 @@ class BankStatementImport(Base):
     session = relationship('Session', back_populates='bank_statement_imports')
 
 class JournalEntry(Base):
-    __tablename__ = 'jounral_entries'
+    __tablename__ = 'journal_entries'
     id = Column(Integer, primary_key=True, index=True)
     transaction_id = Column(Integer, ForeignKey('transactions.id'))
     debit_account_id = Column(Integer, ForeignKey('chart_of_accounts.id'))
@@ -78,6 +78,6 @@ class JournalEntry(Base):
     credit_amount = Column(Float, default=0)
     entry_date = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
 
-    transaction = relationship('Transaction', back_populates='jounral_entries')
+    transaction = relationship('Transaction', back_populates='journal_entries')
     debit_account = relationship('ChartOfAccount', foreign_keys=[debit_account_id])
     credit_account = relationship('ChartOfAccount', foreign_keys=[credit_account_id])

@@ -43,7 +43,7 @@ class Transaction(Base):
     session = relationship('Session', back_populates='transactions')
     debit_account = relationship('ChartOfAccount', foreign_keys=[debit_account_id])
     credit_account = relationship('ChartOfAccount', foreign_keys=[credit_account_id])
-    journal_entries = relationship('JounralEntry', back_populates='transaction')
+    journal_entries = relationship('JournalEntry', back_populates='transaction')
 
 class Invoice(Base):
     __tablename__ = "invoices"

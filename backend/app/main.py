@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import sessions
+from app.routers import sessions, bank_statements
 
 app = FastAPI(title='AI accounting assistant')
 
@@ -11,3 +11,4 @@ async def health():
     return {'status': 'ok'}
 
 app.include_router(sessions.router, prefix='/api', tags=['sessions'])
+app.include_router(bank_statements.router, prefix='/api')

@@ -11,3 +11,4 @@ httpx
 pytest-asyncio
 anyio
 ollama
+python-multipart

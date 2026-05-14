@@ -2,9 +2,10 @@ import csv
 import io
 import json
 import logging
+import os
 import ollama
 from datetime import datetime
-from typing import List
+from typing import Any, List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy import insert
@@ -16,13 +17,53 @@ from app.models import Session, Transaction, ChartOfAccount
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix='/bank-statements', tags=['bank-statements'])
 
-DEFAULT_MODEL = 'llama3.2:8b'
+OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL', 'llama3.2:3b')
 
-async def classify_transaction(description: str, amount: str, accounts: List[dict]) -> dict:
+
+def _parse_confidence(val: Any) -> float:
+    if val is None:
+        return 0.0
+    if isinstance(val, (int, float)) and not isinstance(val, bool):
+        return max(0.0, min(1.0, float(val)))
+    if isinstance(val, str):
+        return max(0.0, min(1.0, float(val.strip())))
+    raise ValueError('confidence must be a number')
+
+
+def _normalize_llm_classification(raw: dict) -> dict:
+    """Accept common LLM JSON variants (numeric codes, string confidence, camelCase)."""
+    if not isinstance(raw, dict):
+        raise ValueError('Response is not a JSON object')
+
+    code = raw.get('account_code')
+    if code is None:
+        code = raw.get('accountCode') or raw.get('code')
+
+    if code is None or code == '':
+        return {'account_code': None, 'confidence': _parse_confidence(raw.get('confidence', raw.get('score')))}
+
+    if isinstance(code, bool):
+        raise ValueError('Invalid account_code')
+    if isinstance(code, (int, float)):
+        f = float(code)
+        acct = str(int(f)) if f == int(f) else str(code).strip()
+    elif isinstance(code, str):
+        acct = code.strip()
+    else:
+        raise ValueError('account_code has invalid type')
+
+    conf = _parse_confidence(raw.get('confidence', raw.get('score')))
+    return {'account_code': acct, 'confidence': conf}
+
+
+async def classify_transaction(description: str, amount: float, accounts: List[dict]) -> dict:
     accounts_text = '\n'.join([f"- {a['code']} {a['name']} ({a['type']})" for a in accounts])
     system_prompt = (
         'You are a precise accounting AI. Given a bank transaction and a chart of accounts, '
-        'return the most appropriate account code and your confidence (0-1).\n\n'
+        'pick the single best account code from the chart.\n\n'
+        'Reply with one JSON object only, with exactly these keys:\n'
+        '- "account_code": a string, the chart code only (e.g. "6100"), or null if none fits.\n'
+        '- "confidence": a number from 0 to 1.\n\n'
         f'Chart of Accounts:\n{accounts_text}'
     )
     user_prompt = f'Transaction: {description}\nAmount: {amount:.2f}'
@@ -30,7 +71,7 @@ async def classify_transaction(description: str, amount: str, accounts: List[dic
     try:
         client = ollama.AsyncClient()
         response = await client.chat(
-            model=DEFAULT_MODEL,
+            model=OLLAMA_MODEL,
             messages=[
                 {'role': 'system', 'content': system_prompt},
                 {'role': 'user', 'content': user_prompt},
@@ -38,14 +79,10 @@ async def classify_transaction(description: str, amount: str, accounts: List[dic
             format='json',
             options={'temperature': 0.0}
         )
-        result = json.loads(response['message']['content'])
-
-        if not isinstance(result.get('account_code'), str) or not isinstance(result.get('confidence'), (int, float)):
-            raise ValueError('Invalid response format')
-
-        return result
+        raw = json.loads(response['message']['content'])
+        return _normalize_llm_classification(raw)
     except Exception as e:
-        logger.warning(f'Classification failed: {e}')
+        logger.warning('Classification failed: %s', e)
         return {'account_code': None, 'confidence': 0.0, 'error': str(e)}
 
 @router.post('/classify')
@@ -58,7 +95,7 @@ async def classify_bank_statement(file: UploadFile = File(...), db: AsyncSession
     result = await db.execute(ChartOfAccount.__table__.select().where(ChartOfAccount.session_id == session.id))
     accounts = [{'code': r.code, 'name': r.name, 'type': r.type} for r in result]
     if not accounts:
-        raise HTTPException(400, 'No char of accounts - seed data first')
+        raise HTTPException(400, 'No chart of accounts — seed data first')
 
     # Parse CSV
     contents = await file.read()
@@ -142,6 +179,6 @@ async def classify_bank_statement(file: UploadFile = File(...), db: AsyncSession
             await db.commit()
             yield f'data: {json.dumps({'event': 'complete', 'created': len(transactions_to_create)})}\n\n'
         else:
-            yield  f'data: {json.dumps({'event': 'comnplete', 'created': 0})}\n\n'
+            yield f'data: {json.dumps({'event': 'complete', 'created': 0})}\n\n'
 
     return StreamingResponse(event_generator(), media_type='text/event-stream')

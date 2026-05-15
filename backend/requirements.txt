@@ -12,3 +12,5 @@ pytest-asyncio
 anyio
 ollama
 python-multipart
+pdfplumber
+numpy
